@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(OM3D)
 
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 # CPP setup
 set(CMAKE_CXX_STANDARD 17)
 if(MSVC)
