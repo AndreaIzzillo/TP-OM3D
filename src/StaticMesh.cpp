@@ -1,6 +1,8 @@
 #include "StaticMesh.h"
 
+#include <algorithm>
 #include <glad/gl.h>
+#include <glm/geometric.hpp>
 
 namespace OM3D {
 
@@ -9,6 +11,25 @@ extern bool audit_bindings_before_draw;
 StaticMesh::StaticMesh(const MeshData& data) :
     _vertex_buffer(data.vertices),
     _index_buffer(data.indices) {
+    if (!data.vertices.empty()) {
+        glm::vec3 min = data.vertices[0].position;
+        glm::vec3 max = data.vertices[0].position;
+
+        for (const auto& v : data.vertices) {
+            min = glm::min(min, v.position);
+            max = glm::max(max, v.position);
+        }
+
+        _bounds.center = (min + max) * 0.5f;
+        _bounds.radius = glm::max(glm::length(max - _bounds.center), glm::length(min - _bounds.center));
+    } else {
+        _bounds.center = glm::vec3(0.0f);
+        _bounds.radius = 0.0f;
+    }
+}
+
+const BoundingSphere& StaticMesh::bounds() const {
+    return _bounds;
 }
 
 void StaticMesh::draw() const {

@@ -99,16 +99,18 @@ void Scene::render() const {
 
     // Render every object
     {
+        const Frustum frustum = _camera.build_frustum();
+
         // Opaque first
         for(const SceneObject& obj : _objects) {
-            if(obj.material().is_opaque()) {
+            if(obj.material().is_opaque() && obj.is_visible(_camera, frustum)) {
                 obj.render();
             }
         }
 
         // Transparent after
         for(const SceneObject& obj : _objects) {
-            if(!obj.material().is_opaque()) {
+            if(!obj.material().is_opaque() && obj.is_visible(_camera, frustum)) {
                 obj.render();
             }
         }

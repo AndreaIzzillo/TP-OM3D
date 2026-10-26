@@ -2,6 +2,7 @@
 #define STATICMESH_H
 
 #include <graphics.h>
+#include <Camera.h>
 #include <TypedBuffer.h>
 #include <Vertex.h>
 
@@ -14,6 +15,11 @@ struct MeshData {
     std::vector<u32> indices;
 };
 
+struct BoundingSphere {
+    glm::vec3 center;
+    float radius;
+};
+
 class StaticMesh : NonCopyable {
 
     public:
@@ -23,11 +29,15 @@ class StaticMesh : NonCopyable {
 
         StaticMesh(const MeshData& data);
 
+        const BoundingSphere& bounds() const;
+
         void draw() const;
 
     private:
         TypedBuffer<Vertex> _vertex_buffer;
         TypedBuffer<u32> _index_buffer;
+
+        BoundingSphere _bounds;
 };
 
 }

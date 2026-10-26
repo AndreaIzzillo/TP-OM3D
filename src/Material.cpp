@@ -48,7 +48,6 @@ void Material::set_stored_uniform(u32 name_hash, UniformValue value) {
 }
 
 void Material::bind() const {
-    // TP1 Backface culling
     if (is_opaque() && !_double_sided) {
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
