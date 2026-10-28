@@ -15,7 +15,7 @@ class SceneObject {
     public:
         SceneObject(std::shared_ptr<StaticMesh> mesh = nullptr, std::shared_ptr<Material> material = nullptr);
 
-        void render() const;
+        void render(bool depth_only = false) const;
 
         const Material& material() const;
 

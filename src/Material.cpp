@@ -47,7 +47,7 @@ void Material::set_stored_uniform(u32 name_hash, UniformValue value) {
     _uniforms.emplace_back(name_hash, std::move(value));
 }
 
-void Material::bind() const {
+void Material::bind(bool depth_only) const {
     if (is_opaque() && !_double_sided) {
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -67,7 +67,7 @@ void Material::bind() const {
         break;
     }
 
-    switch(_depth_test_mode) {
+    switch(depth_only ? DepthTestMode::Standard : _depth_test_mode) {
         case DepthTestMode::None:
             glDisable(GL_DEPTH_TEST);
         break;
@@ -90,15 +90,18 @@ void Material::bind() const {
         break;
     }
 
+    glDepthMask(depth_only || _depth_test_mode != DepthTestMode::Equal);
+
     for(const auto& texture : _textures) {
         texture.second->bind(texture.first);
     }
 
+    const auto& program = depth_only ? _depth_program : _program;
     for(const auto& [h, v] : _uniforms) {
-        _program->set_uniform(h, v);
+        program->set_uniform(h, v);
     }
 
-    _program->bind();
+    program->bind();
 }
 
 Material Material::textured_pbr_material(bool alpha_test) {
@@ -110,6 +113,8 @@ Material Material::textured_pbr_material(bool alpha_test) {
     }
 
     material._program = Program::from_files("lit.frag", "basic.vert", defines);
+    material._depth_program = Program::from_files("depth.frag", "basic.vert", defines);
+    material.set_depth_test_mode(DepthTestMode::Equal);
 
     material.set_texture(0u, default_white_texture());
     material.set_texture(1u, default_normal_texture());

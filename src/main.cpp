@@ -376,6 +376,7 @@ struct RendererState {
             state.depth_texture = Texture(size, ImageFormat::Depth32_FLOAT, WrapMode::Clamp);
             state.lit_hdr_texture = Texture(size, ImageFormat::RGBA16_FLOAT, WrapMode::Clamp);
             state.tone_mapped_texture = Texture(size, ImageFormat::RGBA8_UNORM, WrapMode::Clamp);
+            state.depth_framebuffer = Framebuffer(&state.depth_texture);
             state.main_framebuffer = Framebuffer(&state.depth_texture, std::array{&state.lit_hdr_texture});
             state.tone_map_framebuffer = Framebuffer(nullptr, std::array{&state.tone_mapped_texture});
         }
@@ -391,6 +392,7 @@ struct RendererState {
 
     Framebuffer main_framebuffer;
     Framebuffer tone_map_framebuffer;
+    Framebuffer depth_framebuffer;
 };
 
 
@@ -453,12 +455,26 @@ int main(int argc, char** argv) {
         {
             PROFILE_GPU("Frame");
 
-            // Render the scene
+            // Fill depth with visible opaque objects
+            {
+                PROFILE_GPU("Z-prepass");
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Z-prepass");
+
+                renderer.depth_framebuffer.bind(true, false);
+                scene->render(true);
+
+                glPopDebugGroup();
+            }
+
+            // Render the scene using the depth from the prepass
             {
                 PROFILE_GPU("Main pass");
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Main pass");
 
-                renderer.main_framebuffer.bind(true, true);
+                renderer.main_framebuffer.bind(false, true);
                 scene->render();
+
+                glPopDebugGroup();
             }
 
             // Apply a tonemap as a full screen pass

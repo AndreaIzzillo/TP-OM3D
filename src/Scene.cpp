@@ -54,7 +54,7 @@ void Scene::set_sun(float altitude, float azimuth, glm::vec3 color) {
     _sun_color = color;
 }
 
-void Scene::render() const {
+void Scene::render(bool depth_only) const {
     // Fill and bind frame data buffer
     TypedBuffer<shader::FrameData> buffer(nullptr, 1);
     {
@@ -68,6 +68,16 @@ void Scene::render() const {
         mapping[0].ibl_intensity = _ibl_intensity;
     }
     buffer.bind(BufferUsage::Uniform, 0);
+
+    if(depth_only) {
+        const Frustum frustum = _camera.build_frustum();
+        for(const SceneObject& obj : _objects) {
+            if(obj.material().is_opaque() && obj.is_visible(_camera, frustum)) {
+                obj.render(true);
+            }
+        }
+        return;
+    }
 
     // Fill and bind lights buffer
     TypedBuffer<shader::PointLight> light_buffer(nullptr, std::max(_point_lights.size(), size_t(1)));

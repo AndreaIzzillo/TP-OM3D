@@ -9,13 +9,13 @@ SceneObject::SceneObject(std::shared_ptr<StaticMesh> mesh, std::shared_ptr<Mater
     _material(std::move(material)) {
 }
 
-void SceneObject::render() const {
+void SceneObject::render(bool depth_only) const {
     if(!_material || !_mesh) {
         return;
     }
 
     _material->set_uniform(HASH("model"), transform());
-    _material->bind();
+    _material->bind(depth_only);
     _mesh->draw();
 }
 
