@@ -17,7 +17,8 @@ class Scene : NonMovable {
 
         static Result<std::unique_ptr<Scene>> from_gltf(const std::string& file_name);
 
-        void render(bool depth_only = false) const;
+        void shadow_pass(const Camera& shadow_camera) const;
+        void render(const glm::mat4& shadow_view_proj, bool depth_only = false) const;
 
         void add_object(SceneObject obj);
         void add_light(PointLight obj);
@@ -32,6 +33,10 @@ class Scene : NonMovable {
         void set_ibl_intensity(float intensity);
 
         void set_sun(float altitude, float azimuth, glm::vec3 color = glm::vec3(1.0f));
+
+        const glm::vec3& sun_direction() const;
+
+        BoundingSphere bounds() const;
 
     private:
         std::vector<SceneObject> _objects;

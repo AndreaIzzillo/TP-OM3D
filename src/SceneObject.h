@@ -24,6 +24,8 @@ class SceneObject {
 
         bool is_visible(const Camera& camera, const Frustum& frustum) const;
 
+        BoundingSphere bounds() const;
+
     private:
         glm::mat4 _transform = glm::mat4(1.0f);
 

@@ -1,5 +1,6 @@
 #include "SceneObject.h"
 
+#include <algorithm>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace OM3D {
@@ -65,6 +66,22 @@ bool SceneObject::is_visible(const Camera& camera, const Frustum& frustum) const
     }
 
     return true;
+}
+
+BoundingSphere SceneObject::bounds() const {
+    if(!_mesh) {
+        return BoundingSphere();
+    }
+    
+    const auto& local_bounds = _mesh->bounds();
+    BoundingSphere world_bounds;
+    world_bounds.center = glm::vec3(_transform * glm::vec4(local_bounds.center, 1.0f));
+    const float scale_x = glm::length(glm::vec3(_transform[0]));
+    const float scale_y = glm::length(glm::vec3(_transform[1]));
+    const float scale_z = glm::length(glm::vec3(_transform[2]));
+    world_bounds.radius = local_bounds.radius * std::max({scale_x, scale_y, scale_z});
+
+    return world_bounds;
 }
 
 }

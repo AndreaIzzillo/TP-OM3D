@@ -376,9 +376,11 @@ struct RendererState {
             state.depth_texture = Texture(size, ImageFormat::Depth32_FLOAT, WrapMode::Clamp);
             state.lit_hdr_texture = Texture(size, ImageFormat::RGBA16_FLOAT, WrapMode::Clamp);
             state.tone_mapped_texture = Texture(size, ImageFormat::RGBA8_UNORM, WrapMode::Clamp);
+            state.shadow_texture = Texture(glm::uvec2(2048, 2048), ImageFormat::Depth32_FLOAT, WrapMode::Clamp, true);
             state.depth_framebuffer = Framebuffer(&state.depth_texture);
             state.main_framebuffer = Framebuffer(&state.depth_texture, std::array{&state.lit_hdr_texture});
             state.tone_map_framebuffer = Framebuffer(nullptr, std::array{&state.tone_mapped_texture});
+            state.shadow_framebuffer = Framebuffer(&state.shadow_texture);
         }
 
         return state;
@@ -389,10 +391,12 @@ struct RendererState {
     Texture depth_texture;
     Texture lit_hdr_texture;
     Texture tone_mapped_texture;
+    Texture shadow_texture;
 
     Framebuffer main_framebuffer;
     Framebuffer tone_map_framebuffer;
     Framebuffer depth_framebuffer;
+    Framebuffer shadow_framebuffer;
 };
 
 
@@ -427,6 +431,8 @@ int main(int argc, char** argv) {
     auto tonemap_program = Program::from_files("tonemap.frag", "screen.vert");
     RendererState renderer;
 
+    Camera shadow_camera;
+
     for(;;) {
         glfwPollEvents();
         if(glfwWindowShouldClose(window) || glfwGetKey(window, GLFW_KEY_ESCAPE)) {
@@ -451,9 +457,30 @@ int main(int argc, char** argv) {
             process_inputs(window, scene->camera());
         }
 
+        {
+            const auto scene_bounds = scene->bounds();
+            const glm::vec3 direction = glm::normalize(scene->sun_direction());
+            const glm::vec3 position = scene_bounds.center + direction * scene_bounds.radius;
+            const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+            shadow_camera.set_view(glm::lookAt(position, scene_bounds.center, up));
+            const float r = scene_bounds.radius;
+            shadow_camera.set_proj(Camera::orthographic(-r, r, -r, r, 0.1f, r * 2.0f));
+        }
+
         // Draw everything
         {
             PROFILE_GPU("Frame");
+
+            // Shadow pass
+            {
+                PROFILE_GPU("Shadow pass");
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Shadow pass");
+
+                renderer.shadow_framebuffer.bind(true, false);
+                scene->shadow_pass(shadow_camera);
+
+                glPopDebugGroup();
+            }
 
             // Fill depth with visible opaque objects
             {
@@ -461,7 +488,7 @@ int main(int argc, char** argv) {
                 glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Z-prepass");
 
                 renderer.depth_framebuffer.bind(true, false);
-                scene->render(true);
+                scene->render(shadow_camera.view_proj_matrix(), true);
 
                 glPopDebugGroup();
             }
@@ -472,7 +499,8 @@ int main(int argc, char** argv) {
                 glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Main pass");
 
                 renderer.main_framebuffer.bind(false, true);
-                scene->render();
+                renderer.shadow_texture.bind(6);
+                scene->render(shadow_camera.view_proj_matrix());
 
                 glPopDebugGroup();
             }
