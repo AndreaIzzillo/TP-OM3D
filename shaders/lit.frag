@@ -58,10 +58,25 @@ void main() {
 #endif
 
     // Shadow mapping
-    const vec4 shadow_coord = frame.shadow_view_proj * vec4(in_position, 1.0);
+    const vec3 shadow_position = in_position + frame.sun_dir * frame.sun_bias;
+    const vec4 shadow_coord = frame.shadow_view_proj * vec4(shadow_position, 1.0);
     const vec3 shadow_ndc = shadow_coord.xyz / shadow_coord.w;
     const vec2 shadow_uv = shadow_ndc.xy * 0.5 + 0.5;
-    const float shadow = texture(in_shadow_map, vec3(shadow_uv, shadow_ndc.z));
+    float shadow = 1.0;
+    if(all(greaterThanEqual(shadow_uv, vec2(0.0))) &&
+       all(lessThanEqual(shadow_uv, vec2(1.0))) && shadow_ndc.z <= 1.0) {
+        // Reversed-Z: near is 1, far is 0. Extend shadows beyond the far plane.
+        const float shadow_depth = max(shadow_ndc.z, 0.0);
+        const vec2 texel_size = 1.0 / vec2(textureSize(in_shadow_map, 0));
+        shadow = 0.0;
+        for(int i = -1; i <= 1; ++i) {
+            for(int j = -1; j <= 1; ++j) {
+                const vec2 uv = shadow_uv + vec2(i, j) * texel_size;
+                shadow += texture(in_shadow_map, vec3(uv, shadow_depth));
+            }
+        }
+        shadow /= 9.0;
+    }
 
     const vec4 metal_rough_tex = texture(in_metal_rough, in_uv);
     const float roughness = metal_rough_tex.g * metal_rough_factor.y; // as per glTF spec

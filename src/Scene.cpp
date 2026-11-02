@@ -54,6 +54,10 @@ void Scene::set_sun(float altitude, float azimuth, glm::vec3 color) {
     _sun_color = color;
 }
 
+void Scene::set_sun_bias(float bias) {
+    _sun_bias = bias;
+}
+
 const glm::vec3& Scene::sun_direction() const {
     return _sun_direction;
 }
@@ -117,6 +121,7 @@ void Scene::render(const glm::mat4& shadow_view_proj, bool depth_only) const {
         mapping[0].sun_dir = glm::normalize(_sun_direction);
         mapping[0].ibl_intensity = _ibl_intensity;
         mapping[0].shadow_view_proj = shadow_view_proj;
+        mapping[0].sun_bias = _sun_bias;
     }
     buffer.bind(BufferUsage::Uniform, 0);
 

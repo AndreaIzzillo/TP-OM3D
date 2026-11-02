@@ -33,6 +33,7 @@ class Scene : NonMovable {
         void set_ibl_intensity(float intensity);
 
         void set_sun(float altitude, float azimuth, glm::vec3 color = glm::vec3(1.0f));
+        void set_sun_bias(float bias);
 
         const glm::vec3& sun_direction() const;
 
@@ -44,6 +45,7 @@ class Scene : NonMovable {
 
         glm::vec3 _sun_direction = glm::vec3(0.2f, 1.0f, 0.1f);
         glm::vec3 _sun_color = glm::vec3(1.0f);
+        float _sun_bias = 0.02f;
 
         std::shared_ptr<Texture> _envmap;
         float _ibl_intensity = 1.0f;

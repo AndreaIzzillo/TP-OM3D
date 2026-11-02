@@ -24,6 +24,7 @@ static float delta_time = 0.0f;
 static float sun_altitude = 45.0f;
 static float sun_azimuth = 45.0f;
 static float sun_intensity = 7.0f;
+static float sun_bias = 0.03f;
 static float ibl_intensity = 1.0f;
 static float exposure = 0.33f;
 
@@ -134,6 +135,7 @@ void load_scene(const std::string& filename) {
         scene->set_envmap(envmap);
         scene->set_ibl_intensity(ibl_intensity);
         scene->set_sun(sun_altitude, sun_azimuth, glm::vec3(sun_intensity));
+        scene->set_sun_bias(sun_bias);
     } else {
         std::cerr << "Unable to load scene (" << filename << ")" << std::endl;
     }
@@ -221,7 +223,9 @@ void gui(ImGuiRenderer& imgui) {
             ImGui::DragFloat("Sun Altitude", &sun_altitude, 0.1f, 0.0f, 90.0f, "%.0f");
             ImGui::DragFloat("Sun Azimuth", &sun_azimuth, 0.1f, 0.0f, 360.0f, "%.0f");
             ImGui::DragFloat("Sun Intensity", &sun_intensity, 0.05f, 0.0f, 100.0f, "%.1f");
+            ImGui::SliderFloat("Sun Bias", &sun_bias, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
             scene->set_sun(sun_altitude, sun_azimuth, glm::vec3(sun_intensity));
+            scene->set_sun_bias(sun_bias);
 
             ImGui::EndMenu();
         }

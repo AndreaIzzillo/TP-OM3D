@@ -15,6 +15,11 @@ struct FrameData {
     float ibl_intensity;
 
     mat4 shadow_view_proj;
+
+    float sun_bias;
+    float padding0;
+    float padding1;
+    float padding2;
 };
 
 struct PointLight {
