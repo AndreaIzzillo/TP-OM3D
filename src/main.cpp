@@ -27,6 +27,7 @@ static float sun_intensity = 7.0f;
 static float sun_bias = 0.03f;
 static float ibl_intensity = 1.0f;
 static float exposure = 0.33f;
+static int debug_mode = 1;
 
 static std::unique_ptr<Scene> scene;
 static std::shared_ptr<Texture> envmap;
@@ -210,6 +211,12 @@ void gui(ImGuiRenderer& imgui) {
             ImGui::EndMenu();
         }
 
+        if(ImGui::BeginMenu("Debug")) {
+            const std::array<const char*, 5> debug_modes = {"Depth", "Albedo", "Normals", "Roughness", "Metalness"};
+            ImGui::Combo("Debug mode", &debug_mode, debug_modes.data(), int(debug_modes.size()));
+            ImGui::EndMenu();
+        }
+
         if(ImGui::BeginMenu("Lighting")) {
             ImGui::DragFloat("Exposure", &exposure, 0.01f, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
 
@@ -378,10 +385,13 @@ struct RendererState {
 
         if(state.size.x > 0 && state.size.y > 0) {
             state.depth_texture = Texture(size, ImageFormat::Depth32_FLOAT, WrapMode::Clamp);
+            state.albedo_roughness_texture = Texture(size, ImageFormat::RGBA8_sRGB, WrapMode::Clamp);
+            state.normal_metalness_texture = Texture(size, ImageFormat::RGBA8_UNORM, WrapMode::Clamp);
             state.lit_hdr_texture = Texture(size, ImageFormat::RGBA16_FLOAT, WrapMode::Clamp);
             state.tone_mapped_texture = Texture(size, ImageFormat::RGBA8_UNORM, WrapMode::Clamp);
             state.shadow_texture = Texture(glm::uvec2(2048, 2048), ImageFormat::Depth32_FLOAT, WrapMode::Clamp, true);
             state.depth_framebuffer = Framebuffer(&state.depth_texture);
+            state.gbuffer_framebuffer = Framebuffer(&state.depth_texture, std::array{&state.albedo_roughness_texture, &state.normal_metalness_texture});
             state.main_framebuffer = Framebuffer(&state.depth_texture, std::array{&state.lit_hdr_texture});
             state.tone_map_framebuffer = Framebuffer(nullptr, std::array{&state.tone_mapped_texture});
             state.shadow_framebuffer = Framebuffer(&state.shadow_texture);
@@ -393,15 +403,51 @@ struct RendererState {
     glm::uvec2 size = {};
 
     Texture depth_texture;
+    Texture albedo_roughness_texture;
+    Texture normal_metalness_texture;
     Texture lit_hdr_texture;
     Texture tone_mapped_texture;
     Texture shadow_texture;
 
     Framebuffer main_framebuffer;
+    Framebuffer gbuffer_framebuffer;
     Framebuffer tone_map_framebuffer;
     Framebuffer depth_framebuffer;
     Framebuffer shadow_framebuffer;
 };
+
+void render_tonemap(const RendererState& renderer, Program& program) {
+    PROFILE_GPU("Tonemap");
+
+    renderer.tone_map_framebuffer.bind(false, true);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+
+    program.bind();
+    program.set_uniform(HASH("exposure"), exposure);
+    renderer.lit_hdr_texture.bind(0);
+    draw_full_screen_triangle();
+}
+
+void render_gbuffer_debug(const RendererState& renderer, Program& program, u32 debug_mode) {
+    PROFILE_GPU("G-Buffer Debug");
+    glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "G-Buffer Debug");
+
+    renderer.tone_map_framebuffer.bind(false, true);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+
+    program.bind();
+    program.set_uniform(HASH("debug_mode"), debug_mode);
+    renderer.albedo_roughness_texture.bind(0);
+    renderer.normal_metalness_texture.bind(1);
+    renderer.depth_texture.bind(2);
+    draw_full_screen_triangle();
+
+    glPopDebugGroup();
+}
 
 
 
@@ -432,7 +478,7 @@ int main(int argc, char** argv) {
 
     load_default_scene();
 
-    auto tonemap_program = Program::from_files("tonemap.frag", "screen.vert");
+    auto gbuffer_debug_program = Program::from_files("gbuffer_debug.frag", "screen.vert");
     RendererState renderer;
 
     Camera shadow_camera;
@@ -449,6 +495,11 @@ int main(int argc, char** argv) {
             int width = 0;
             int height = 0;
             glfwGetWindowSize(window, &width, &height);
+
+            if(width <= 0 || height <= 0) {
+                glfwWaitEvents();
+                continue;
+            }
 
             if(renderer.size != glm::uvec2(width, height)) {
                 renderer = RendererState::create(glm::uvec2(width, height));
@@ -497,30 +548,21 @@ int main(int argc, char** argv) {
                 glPopDebugGroup();
             }
 
-            // Render the scene using the depth from the prepass
+            // Fill the G-Buffer using the depth from the prepass
             {
-                PROFILE_GPU("Main pass");
-                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Main pass");
+                PROFILE_GPU("G-Buffer pass");
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "G-Buffer pass");
 
-                renderer.main_framebuffer.bind(false, true);
-                renderer.shadow_texture.bind(6);
-                scene->render(shadow_camera.view_proj_matrix());
+                renderer.gbuffer_framebuffer.bind(false, true);
+                scene->render(shadow_camera.view_proj_matrix(), false, true);
 
                 glPopDebugGroup();
             }
 
-            // Apply a tonemap as a full screen pass
-            {
-                PROFILE_GPU("Tonemap");
+            // Display the selected G-Buffer property as a full screen pass
+            render_gbuffer_debug(renderer, *gbuffer_debug_program, u32(debug_mode));
 
-                renderer.tone_map_framebuffer.bind(false, true);
-                tonemap_program->bind();
-                tonemap_program->set_uniform(HASH("exposure"), exposure);
-                renderer.lit_hdr_texture.bind(0);
-                draw_full_screen_triangle();
-            }
-
-            // Blit tonemap result to screen
+            // Blit debug result to screen
             {
                 PROFILE_GPU("Blit");
                 blit_to_screen(renderer.tone_mapped_texture);
@@ -538,7 +580,7 @@ int main(int argc, char** argv) {
     scene = nullptr;
     envmap = nullptr;
     imgui = nullptr;
-    tonemap_program = nullptr;
+    gbuffer_debug_program = nullptr;
     renderer = {};
     destroy_graphics();
 }

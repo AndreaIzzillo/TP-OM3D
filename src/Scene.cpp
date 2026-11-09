@@ -108,7 +108,7 @@ void Scene::shadow_pass(const Camera& shadow_camera) const {
     }
 }
 
-void Scene::render(const glm::mat4& shadow_view_proj, bool depth_only) const {
+void Scene::render(const glm::mat4& shadow_view_proj, bool depth_only, bool opaque_only) const {
     // Fill and bind frame data buffer
     TypedBuffer<shader::FrameData> buffer(nullptr, 1);
     {
@@ -125,11 +125,11 @@ void Scene::render(const glm::mat4& shadow_view_proj, bool depth_only) const {
     }
     buffer.bind(BufferUsage::Uniform, 0);
 
-    if(depth_only) {
+    if(depth_only || opaque_only) {
         const Frustum frustum = _camera.build_frustum();
         for(const SceneObject& obj : _objects) {
             if(obj.material().is_opaque() && obj.is_visible(_camera, frustum)) {
-                obj.render(true);
+                obj.render(depth_only);
             }
         }
         return;

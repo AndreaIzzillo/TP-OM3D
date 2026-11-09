@@ -104,7 +104,7 @@ void Material::bind(bool depth_only) const {
     program->bind();
 }
 
-Material Material::textured_pbr_material(bool alpha_test) {
+Material Material::textured_pbr_material(bool alpha_test, bool gbuffer) {
     Material material;
 
     std::vector<std::string> defines;
@@ -112,7 +112,7 @@ Material Material::textured_pbr_material(bool alpha_test) {
         defines.emplace_back("ALPHA_TEST");
     }
 
-    material._program = Program::from_files("lit.frag", "basic.vert", defines);
+    material._program = Program::from_files(gbuffer ? "gbuffer.frag" : "lit.frag", "basic.vert", defines);
     material._depth_program = Program::from_files("depth.frag", "basic.vert", defines);
     material.set_depth_test_mode(DepthTestMode::Equal);
 

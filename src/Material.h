@@ -48,7 +48,7 @@ class Material {
 
         void bind(bool depth_only = false) const;
 
-        static Material textured_pbr_material(bool alpha_test = false);
+        static Material textured_pbr_material(bool alpha_test = false, bool gbuffer = true);
 
     private:
         std::shared_ptr<Program> _program;

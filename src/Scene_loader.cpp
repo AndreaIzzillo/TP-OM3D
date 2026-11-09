@@ -439,7 +439,7 @@ Result<std::unique_ptr<Scene>> Scene::from_gltf(const std::string& file_name) {
                     auto emissive = load_texture(emissive_info, false);
 
 
-                    mat = std::make_shared<Material>(Material::textured_pbr_material(alpha_test));
+                    mat = std::make_shared<Material>(Material::textured_pbr_material(alpha_test, opaque || mask));
 
                     if(!opaque && !mask) {
                         mat->set_blend_mode(BlendMode::Alpha);

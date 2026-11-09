@@ -18,7 +18,7 @@ class Scene : NonMovable {
         static Result<std::unique_ptr<Scene>> from_gltf(const std::string& file_name);
 
         void shadow_pass(const Camera& shadow_camera) const;
-        void render(const glm::mat4& shadow_view_proj, bool depth_only = false) const;
+        void render(const glm::mat4& shadow_view_proj, bool depth_only = false, bool opaque_only = false) const;
 
         void add_object(SceneObject obj);
         void add_light(PointLight obj);
