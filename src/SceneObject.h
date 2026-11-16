@@ -15,9 +15,10 @@ class SceneObject {
     public:
         SceneObject(std::shared_ptr<StaticMesh> mesh = nullptr, std::shared_ptr<Material> material = nullptr);
 
-        void render(bool depth_only = false) const;
+        void render(bool depth_only = false, bool forward = false) const;
 
         const Material& material() const;
+        const std::shared_ptr<StaticMesh>& mesh() const;
 
         void set_transform(const glm::mat4& tr);
         const glm::mat4& transform() const;

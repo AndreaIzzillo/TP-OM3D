@@ -4,11 +4,14 @@
 
 #include <shader_structs.h>
 
+#include <algorithm>
+
 namespace OM3D {
 
 Scene::Scene() {
     _sky_material.set_program(Program::from_files("sky.frag", "screen.vert"));
     _sky_material.set_depth_test_mode(DepthTestMode::None);
+    _sky_material.set_depth_write(false);
 
     _envmap = std::make_shared<Texture>(Texture::empty_cubemap(4, ImageFormat::RGBA8_UNORM));
 }
@@ -108,7 +111,70 @@ void Scene::shadow_pass(const Camera& shadow_camera) const {
     }
 }
 
-void Scene::render(const glm::mat4& shadow_view_proj, bool depth_only, bool opaque_only) const {
+void Scene::render_lighting(const glm::mat4& shadow_view_proj, const Material& material, const Material& point_light_material, const std::shared_ptr<StaticMesh>& sphere_mesh) const {
+    TypedBuffer<shader::FrameData> buffer(nullptr, 1);
+    {
+        auto mapping = buffer.map(AccessType::WriteOnly);
+        mapping[0].camera.view_proj = _camera.view_proj_matrix();
+        mapping[0].camera.inv_view_proj = glm::inverse(_camera.view_proj_matrix());
+        mapping[0].camera.position = _camera.position();
+        mapping[0].point_light_count = u32(_point_lights.size());
+        mapping[0].sun_color = _sun_color;
+        mapping[0].sun_dir = glm::normalize(_sun_direction);
+        mapping[0].ibl_intensity = _ibl_intensity;
+        mapping[0].shadow_view_proj = shadow_view_proj;
+        mapping[0].sun_bias = _sun_bias;
+    }
+    buffer.bind(BufferUsage::Uniform, 0);
+
+    DEBUG_ASSERT(_envmap && !_envmap->is_null());
+    _envmap->bind(4);
+    brdf_lut().bind(5);
+
+    material.bind();
+    draw_full_screen_triangle();
+
+    if(_point_lights.empty()) {
+        return;
+    }
+
+    TypedBuffer<shader::PointLight> light_buffer(nullptr, _point_lights.size());
+    {
+        auto mapping = light_buffer.map(AccessType::WriteOnly);
+        for(size_t i = 0; i != _point_lights.size(); ++i) {
+            const auto& light = _point_lights[i];
+            mapping[i] = {
+                light.position(),
+                light.radius(),
+                light.color(),
+                0.0f
+            };
+        }
+    }
+    light_buffer.bind(BufferUsage::Storage, 1);
+
+    const Frustum frustum = _camera.build_frustum();
+    SceneObject volume(sphere_mesh);
+
+    point_light_material.bind();
+    for(size_t i = 0; i != _point_lights.size(); ++i) {
+        const auto& light = _point_lights[i];
+
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), light.position());
+        model = glm::scale(model, glm::vec3(light.radius()));
+
+        volume.set_transform(model);
+        if(!volume.is_visible(_camera, frustum)) {
+            continue;
+        }
+
+        point_light_material.set_uniform(HASH("model"), model);
+        point_light_material.set_uniform(HASH("light_index"), u32(i));
+        sphere_mesh->draw();
+    }
+}
+
+void Scene::render(const glm::mat4& shadow_view_proj, bool depth_only, bool opaque_only, bool transparent_only) const {
     // Fill and bind frame data buffer
     TypedBuffer<shader::FrameData> buffer(nullptr, 1);
     {
@@ -159,26 +225,43 @@ void Scene::render(const glm::mat4& shadow_view_proj, bool depth_only, bool opaq
     brdf_lut().bind(5);
 
     // Render the sky
-    _sky_material.bind();
-    _sky_material.set_uniform(HASH("intensity"), _ibl_intensity);
-    draw_full_screen_triangle();
+    if(!transparent_only) {
+        _sky_material.bind();
+        _sky_material.set_uniform(HASH("intensity"), _ibl_intensity);
+        draw_full_screen_triangle();
+    }
 
     // Render every object
     {
         const Frustum frustum = _camera.build_frustum();
 
         // Opaque first
-        for(const SceneObject& obj : _objects) {
-            if(obj.material().is_opaque() && obj.is_visible(_camera, frustum)) {
-                obj.render();
+        if(!transparent_only) {
+            for(const SceneObject& obj : _objects) {
+                if(obj.material().is_opaque() && obj.is_visible(_camera, frustum)) {
+                    obj.render(false, true);
+                }
             }
         }
 
         // Transparent after
+        std::vector<const SceneObject*> transparent_objects;
         for(const SceneObject& obj : _objects) {
             if(!obj.material().is_opaque() && obj.is_visible(_camera, frustum)) {
-                obj.render();
+                transparent_objects.push_back(&obj);
             }
+        }
+
+        const glm::vec3 camera_position = _camera.position();
+        const glm::vec3 camera_forward = _camera.forward();
+        std::sort(transparent_objects.begin(), transparent_objects.end(), [&](const SceneObject* a, const SceneObject* b) {
+            const float distance_a = glm::dot(a->bounds().center - camera_position, camera_forward);
+            const float distance_b = glm::dot(b->bounds().center - camera_position, camera_forward);
+            return distance_a > distance_b;
+        });
+
+        for(const SceneObject* obj : transparent_objects) {
+            obj->render(false, true);
         }
     }
 

@@ -12,6 +12,13 @@ namespace OM3D {
 enum class BlendMode {
     None,
     Alpha,
+    Additive,
+};
+
+enum class CullMode {
+    None,
+    Back,
+    Front,
 };
 
 enum class DepthTestMode {
@@ -29,6 +36,8 @@ class Material {
         void set_program(std::shared_ptr<Program> prog);
         void set_blend_mode(BlendMode blend);
         void set_depth_test_mode(DepthTestMode depth);
+        void set_depth_write(bool depth_write);
+        void set_cull_mode(CullMode cull);
         void set_double_sided(bool double_sided);
         void set_texture(u32 slot, std::shared_ptr<Texture> tex);
 
@@ -44,21 +53,26 @@ class Material {
             if(_depth_program) {
                 _depth_program->set_uniform(FWD(args)...);
             }
+            if(_forward_program) {
+                _forward_program->set_uniform(FWD(args)...);
+            }
         }
 
-        void bind(bool depth_only = false) const;
+        void bind(bool depth_only = false, bool forward = false) const;
 
         static Material textured_pbr_material(bool alpha_test = false, bool gbuffer = true);
 
     private:
         std::shared_ptr<Program> _program;
         std::shared_ptr<Program> _depth_program;
+        std::shared_ptr<Program> _forward_program;
         std::vector<std::pair<u32, std::shared_ptr<Texture>>> _textures;
         std::vector<std::pair<u32, UniformValue>> _uniforms;
 
         BlendMode _blend_mode = BlendMode::None;
         DepthTestMode _depth_test_mode = DepthTestMode::Standard;
-        bool _double_sided = false;
+        bool _depth_write = true;
+        CullMode _cull_mode = CullMode::Back;
 };
 
 }

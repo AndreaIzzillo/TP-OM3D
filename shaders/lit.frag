@@ -25,7 +25,7 @@ layout(binding = 2) uniform sampler2D in_metal_rough;
 layout(binding = 3) uniform sampler2D in_emissive;
 layout(binding = 6) uniform sampler2DShadow in_shadow_map;
 
-uniform vec3 base_color_factor;
+uniform vec4 base_color_factor;
 uniform vec2 metal_rough_factor;
 uniform vec3 emissive_factor;
 uniform float alpha_cutoff;
@@ -43,13 +43,13 @@ layout(binding = 1) buffer PointLights {
 
 void main() {
     const vec3 normal_map = unpack_normal_map(texture(in_normal_texture, in_uv).xy);
-    const vec3 normal = normal_map.x * in_tangent +
-                        normal_map.y * in_bitangent +
-                        normal_map.z * in_normal;
+    const vec3 normal = normalize(normal_map.x * in_tangent +
+                                  normal_map.y * in_bitangent +
+                                  normal_map.z * in_normal);
 
     const vec4 albedo_tex = texture(in_texture, in_uv);
-    const vec3 base_color = in_color.rgb * albedo_tex.rgb * base_color_factor;
-    const float alpha = albedo_tex.a;
+    const vec3 base_color = in_color.rgb * albedo_tex.rgb * base_color_factor.rgb;
+    const float alpha = albedo_tex.a * base_color_factor.a;
 
 #ifdef ALPHA_TEST
     if(alpha <= alpha_cutoff) {
@@ -57,7 +57,6 @@ void main() {
     }
 #endif
 
-    // Shadow mapping
     const vec3 shadow_position = in_position + frame.sun_dir * frame.sun_bias;
     const vec4 shadow_coord = frame.shadow_view_proj * vec4(shadow_position, 1.0);
     const vec3 shadow_ndc = shadow_coord.xyz / shadow_coord.w;
@@ -65,7 +64,6 @@ void main() {
     float shadow = 1.0;
     if(all(greaterThanEqual(shadow_uv, vec2(0.0))) &&
        all(lessThanEqual(shadow_uv, vec2(1.0))) && shadow_ndc.z <= 1.0) {
-        // Reversed-Z: near is 1, far is 0. Extend shadows beyond the far plane.
         const float shadow_depth = max(shadow_ndc.z, 0.0);
         const vec2 texel_size = 1.0 / vec2(textureSize(in_shadow_map, 0));
         shadow = 0.0;

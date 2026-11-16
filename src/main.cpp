@@ -28,6 +28,8 @@ static float sun_bias = 0.03f;
 static float ibl_intensity = 1.0f;
 static float exposure = 0.33f;
 static int debug_mode = 1;
+static bool show_gbuffer = false;
+static bool deferred_shading = true;
 
 static std::unique_ptr<Scene> scene;
 static std::shared_ptr<Texture> envmap;
@@ -212,12 +214,16 @@ void gui(ImGuiRenderer& imgui) {
         }
 
         if(ImGui::BeginMenu("Debug")) {
+            ImGui::Checkbox("Show G-Buffer", &show_gbuffer);
+
             const std::array<const char*, 5> debug_modes = {"Depth", "Albedo", "Normals", "Roughness", "Metalness"};
             ImGui::Combo("Debug mode", &debug_mode, debug_modes.data(), int(debug_modes.size()));
             ImGui::EndMenu();
         }
 
         if(ImGui::BeginMenu("Lighting")) {
+            ImGui::Checkbox("Deferred shading", &deferred_shading);
+
             ImGui::DragFloat("Exposure", &exposure, 0.01f, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
 
             ImGui::Separator();
@@ -387,11 +393,12 @@ struct RendererState {
             state.depth_texture = Texture(size, ImageFormat::Depth32_FLOAT, WrapMode::Clamp);
             state.albedo_roughness_texture = Texture(size, ImageFormat::RGBA8_sRGB, WrapMode::Clamp);
             state.normal_metalness_texture = Texture(size, ImageFormat::RGBA8_UNORM, WrapMode::Clamp);
+            state.emissive_texture = Texture(size, ImageFormat::RGBA16_FLOAT, WrapMode::Clamp);
             state.lit_hdr_texture = Texture(size, ImageFormat::RGBA16_FLOAT, WrapMode::Clamp);
             state.tone_mapped_texture = Texture(size, ImageFormat::RGBA8_UNORM, WrapMode::Clamp);
             state.shadow_texture = Texture(glm::uvec2(2048, 2048), ImageFormat::Depth32_FLOAT, WrapMode::Clamp, true);
             state.depth_framebuffer = Framebuffer(&state.depth_texture);
-            state.gbuffer_framebuffer = Framebuffer(&state.depth_texture, std::array{&state.albedo_roughness_texture, &state.normal_metalness_texture});
+            state.gbuffer_framebuffer = Framebuffer(&state.depth_texture, std::array{&state.albedo_roughness_texture, &state.normal_metalness_texture, &state.emissive_texture});
             state.main_framebuffer = Framebuffer(&state.depth_texture, std::array{&state.lit_hdr_texture});
             state.tone_map_framebuffer = Framebuffer(nullptr, std::array{&state.tone_mapped_texture});
             state.shadow_framebuffer = Framebuffer(&state.shadow_texture);
@@ -405,6 +412,7 @@ struct RendererState {
     Texture depth_texture;
     Texture albedo_roughness_texture;
     Texture normal_metalness_texture;
+    Texture emissive_texture;
     Texture lit_hdr_texture;
     Texture tone_mapped_texture;
     Texture shadow_texture;
@@ -478,7 +486,29 @@ int main(int argc, char** argv) {
 
     load_default_scene();
 
+    auto sphere_scene = Scene::from_gltf(std::string(data_path) + "sphere.glb");
+    ALWAYS_ASSERT(sphere_scene.is_ok && !sphere_scene.value->objects().is_empty(), "Unable to load light sphere");
+
+    auto sphere_mesh = sphere_scene.value->objects()[0].mesh();
+    sphere_scene.value = nullptr;
+
     auto gbuffer_debug_program = Program::from_files("gbuffer_debug.frag", "screen.vert");
+    auto tonemap_program = Program::from_files("tonemap.frag", "screen.vert");
+
+    Material lighting_material;
+    lighting_material.set_program(Program::from_files("deferred_sun.frag", "screen.vert"));
+    lighting_material.set_depth_test_mode(DepthTestMode::None);
+    lighting_material.set_depth_write(false);
+    lighting_material.set_blend_mode(BlendMode::None);
+    lighting_material.set_cull_mode(CullMode::None);
+
+    Material point_light_material;
+    point_light_material.set_program(Program::from_files("deferred_point.frag", "basic.vert"));
+    point_light_material.set_depth_test_mode(DepthTestMode::Reversed);
+    point_light_material.set_depth_write(false);
+    point_light_material.set_blend_mode(BlendMode::Additive);
+    point_light_material.set_cull_mode(CullMode::Front);
+
     RendererState renderer;
 
     Camera shadow_camera;
@@ -526,7 +556,6 @@ int main(int argc, char** argv) {
         {
             PROFILE_GPU("Frame");
 
-            // Shadow pass
             {
                 PROFILE_GPU("Shadow pass");
                 glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Shadow pass");
@@ -537,7 +566,6 @@ int main(int argc, char** argv) {
                 glPopDebugGroup();
             }
 
-            // Fill depth with visible opaque objects
             {
                 PROFILE_GPU("Z-prepass");
                 glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Z-prepass");
@@ -548,8 +576,7 @@ int main(int argc, char** argv) {
                 glPopDebugGroup();
             }
 
-            // Fill the G-Buffer using the depth from the prepass
-            {
+            if(deferred_shading || show_gbuffer) {
                 PROFILE_GPU("G-Buffer pass");
                 glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "G-Buffer pass");
 
@@ -559,10 +586,49 @@ int main(int argc, char** argv) {
                 glPopDebugGroup();
             }
 
-            // Display the selected G-Buffer property as a full screen pass
-            render_gbuffer_debug(renderer, *gbuffer_debug_program, u32(debug_mode));
+            if(deferred_shading) {
+                PROFILE_GPU("Lighting pass");
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Lighting pass");
 
-            // Blit debug result to screen
+                renderer.main_framebuffer.bind(false, true);
+
+                renderer.albedo_roughness_texture.bind(0);
+                renderer.normal_metalness_texture.bind(1);
+                renderer.depth_texture.bind(2);
+                renderer.emissive_texture.bind(3);
+                renderer.shadow_texture.bind(6);
+
+                scene->render_lighting(shadow_camera.view_proj_matrix(), lighting_material, point_light_material, sphere_mesh);
+
+                glPopDebugGroup();
+            }
+
+            if(deferred_shading) {
+                PROFILE_GPU("Transparent pass");
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Transparent pass");
+
+                renderer.main_framebuffer.bind(false, false);
+                renderer.shadow_texture.bind(6);
+                scene->render(shadow_camera.view_proj_matrix(), false, false, true);
+
+                glPopDebugGroup();
+            } else {
+                PROFILE_GPU("Forward pass");
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Forward pass");
+
+                renderer.main_framebuffer.bind(false, true);
+                renderer.shadow_texture.bind(6);
+                scene->render(shadow_camera.view_proj_matrix());
+
+                glPopDebugGroup();
+            }
+
+            if(show_gbuffer) {
+                render_gbuffer_debug(renderer, *gbuffer_debug_program, u32(debug_mode));
+            } else {
+                render_tonemap(renderer, *tonemap_program);
+            }
+
             {
                 PROFILE_GPU("Blit");
                 blit_to_screen(renderer.tone_mapped_texture);
@@ -580,7 +646,11 @@ int main(int argc, char** argv) {
     scene = nullptr;
     envmap = nullptr;
     imgui = nullptr;
+    lighting_material = {};
+    point_light_material = {};
+    sphere_mesh = nullptr;
     gbuffer_debug_program = nullptr;
+    tonemap_program = nullptr;
     renderer = {};
     destroy_graphics();
 }

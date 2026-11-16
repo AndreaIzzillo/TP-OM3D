@@ -18,7 +18,8 @@ class Scene : NonMovable {
         static Result<std::unique_ptr<Scene>> from_gltf(const std::string& file_name);
 
         void shadow_pass(const Camera& shadow_camera) const;
-        void render(const glm::mat4& shadow_view_proj, bool depth_only = false, bool opaque_only = false) const;
+        void render(const glm::mat4& shadow_view_proj, bool depth_only = false, bool opaque_only = false, bool transparent_only = false) const;
+        void render_lighting(const glm::mat4& shadow_view_proj, const Material& material, const Material& point_light_material, const std::shared_ptr<StaticMesh>& sphere_mesh) const;
 
         void add_object(SceneObject obj);
         void add_light(PointLight obj);

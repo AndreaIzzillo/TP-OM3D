@@ -12,7 +12,6 @@ void main() {
     const ivec2 coord = ivec2(gl_FragCoord.xy);
     const float depth = texelFetch(in_depth, coord, 0).r;
 
-    // The reverse-Z depth buffer is cleared to 0.
     if(depth == 0.0) {
         out_color = vec4(0.0, 0.0, 0.0, 1.0);
         return;
@@ -20,23 +19,23 @@ void main() {
 
     vec3 color = vec3(0.0);
     switch(debug_mode) {
-        case 0u: // Depth
+        case 0u:
             color = vec3(pow(depth, 0.35));
         break;
 
-        case 1u: // Albedo
+        case 1u:
             color = texelFetch(in_albedo_roughness, coord, 0).rgb;
         break;
 
-        case 2u: // Normals
+        case 2u:
             color = texelFetch(in_normal_metalness, coord, 0).rgb;
         break;
 
-        case 3u: // Roughness
+        case 3u:
             color = vec3(texelFetch(in_albedo_roughness, coord, 0).a);
         break;
 
-        case 4u: // Metalness
+        case 4u:
             color = vec3(texelFetch(in_normal_metalness, coord, 0).a);
         break;
     }

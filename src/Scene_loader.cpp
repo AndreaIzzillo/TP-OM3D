@@ -431,7 +431,7 @@ Result<std::unique_ptr<Scene>> Scene::from_gltf(const std::string& file_name) {
 
                     const bool opaque = (gltf_mat.alphaMode == "OPAQUE") || (gltf_mat.alphaMode == "NONE");
                     const bool mask = (gltf_mat.alphaMode == "MASK");
-                    const bool alpha_test = !opaque || mask;
+                    const bool alpha_test = mask;
 
                     auto albedo = load_texture(albedo_info, true);
                     auto normal = load_texture(normal_info, false);
@@ -443,7 +443,8 @@ Result<std::unique_ptr<Scene>> Scene::from_gltf(const std::string& file_name) {
 
                     if(!opaque && !mask) {
                         mat->set_blend_mode(BlendMode::Alpha);
-                        mat->set_depth_test_mode(DepthTestMode::None);
+                        mat->set_depth_test_mode(DepthTestMode::Standard);
+                        mat->set_depth_write(false);
                     }
 
                     if(albedo) {
@@ -469,10 +470,11 @@ Result<std::unique_ptr<Scene>> Scene::from_gltf(const std::string& file_name) {
 
                     mat->set_double_sided(gltf_mat.doubleSided);
 
-                    mat->set_stored_uniform(HASH("base_color_factor"), glm::vec3(
+                    mat->set_stored_uniform(HASH("base_color_factor"), glm::vec4(
                         gltf_mat.pbrMetallicRoughness.baseColorFactor[0],
                         gltf_mat.pbrMetallicRoughness.baseColorFactor[1],
-                        gltf_mat.pbrMetallicRoughness.baseColorFactor[2]
+                        gltf_mat.pbrMetallicRoughness.baseColorFactor[2],
+                        gltf_mat.pbrMetallicRoughness.baseColorFactor[3]
                     ));
 
                     mat->set_stored_uniform(HASH("metal_rough_factor"), glm::vec2(
